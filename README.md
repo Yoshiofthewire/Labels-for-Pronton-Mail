@@ -109,6 +109,17 @@ docker compose up --build -d
 
 - Web UI: http://localhost:5866
 
+5. First login credentials:
+
+- Username: `admin`
+- Password: `ChangeMeNow123!`
+- You will be required to change the password on first login.
+
+Optional bootstrap override values in `.env`:
+
+- `BOOTSTRAP_ADMIN_USER` (default: `admin`)
+- `BOOTSTRAP_ADMIN_PASS` (default: `ChangeMeNow123!`)
+
 ## Volumes and Persistence
 
 The container persists data via named volumes mapped to:
@@ -223,6 +234,8 @@ Response includes connection target and returned text.
 ## Authentication and Security
 
 - Local username/password login (`/api/auth/login`)
+- First-run default credentials are bootstrapped as `admin` / `ChangeMeNow123!`
+- First login is forced to change password (`MUST_CHANGE_PASSWORD=true`)
 - Session cookie (`lumo_session`) with sliding expiry
 - Auth middleware protects operational routes
 - `/api/health`, `/api/auth/login`, `/api/auth/me`, `/api/setup` are public by design
