@@ -95,8 +95,7 @@ cp .env.example .env
 
 2. Edit `.env` values:
 
-- `PROTON_USERNAME` + `PROTON_PASSWORD` (or token mode with `PROTON_UID`, `PROTON_ACCESS_TOKEN`, `PROTON_REFRESH_TOKEN`)
-- `PROTON_TOTP` if your Proton account requires 2FA
+- `PROTON_AUTH_FILE` (default: `/lumo_lab/config/proton-auth.json`)
 - `LUMO_API_KEY` if your Lumo route requires it
 - `LUMO_BASE_URL` (defaults to local in-container Lumo)
 
@@ -123,6 +122,7 @@ Important files:
 - `/lumo_lab/config/config.yaml`
 - `/lumo_lab/config/admin.env`
 - `/lumo_lab/config/lumo-auth.json` (for local Lumo API V2 session)
+- `/lumo_lab/config/proton-auth.json` (generated Proton API token artifact)
 - `/lumo_lab/config/TUNING.md` (runtime tuning instructions; created/updated by API)
 - `/lumo_lab/state/state.json`
 - `/lumo_lab/state/decisions.json`
@@ -165,6 +165,9 @@ Then point `LUMO_BASE_URL` to an external Lumo service.
 
 The Config page also supports:
 
+- Uploading the `auth.json` generated locally by Lumo API V2 `generate_auth.js`
+- Reporting whether the persisted Lumo auth file exists and when it was last updated
+- Converting uploaded `auth.json` into Proton token runtime file (`/api/proton/auth`)
 - Loading and editing `TUNING.md`
 - Syncing labels discovered from Proton (`GET /api/labels`)
 - Reordering labels for priority guidance
@@ -186,6 +189,20 @@ You can read and update runtime tuning through:
 
 - `GET /api/tuning`
 - `PUT /api/tuning`
+
+Local Lumo auth file management is available through:
+
+- `GET /api/lumo/auth`
+- `POST /api/lumo/auth`
+
+`POST /api/lumo/auth` accepts the `auth.json` generated locally by the upstream Lumo API V2 auth flow, stores it in `/lumo_lab/config/lumo-auth.json`, and attempts to restart only the `lumo` supervised process.
+
+Proton auth conversion/status is available through:
+
+- `GET /api/proton/auth`
+- `POST /api/proton/auth`
+
+`POST /api/proton/auth` accepts Playwright storageState `auth.json`, extracts token pairs from Proton `AUTH-*` and `REFRESH-*` cookies, and writes `/lumo_lab/config/proton-auth.json` for backend runtime use.
 
 ## Lumo Test Button
 
@@ -230,6 +247,8 @@ Protected (session required):
 - `GET|PUT /api/tuning`
 - `GET /api/decisions`
 - `GET /api/logs`
+- `GET|POST /api/lumo/auth`
+- `GET|POST /api/proton/auth`
 - `POST /api/lumo/test`
 - `POST /api/health/repair`
 
@@ -244,17 +263,12 @@ Protected (session required):
 
 ## Proton Configuration
 
-Supported credential modes:
+Supported runtime mode:
 
-1. Username/password mode:
-- `PROTON_USERNAME`
-- `PROTON_PASSWORD`
-- optional `PROTON_TOTP`
+1. File mode:
+- `PROTON_AUTH_FILE` (default `/lumo_lab/config/proton-auth.json`)
 
-2. Token mode:
-- `PROTON_UID`
-- `PROTON_ACCESS_TOKEN`
-- `PROTON_REFRESH_TOKEN`
+Use the Config page `Proton Authentication` section to upload and convert Lumo `auth.json` into this token artifact.
 
 ## Development Commands
 
@@ -311,6 +325,9 @@ npm run dev
 ## License
 
 This repository is licensed under AGPL V3.0.
+
 Respect upstream licenses for dependencies. 
+
 The Lumo API V2 is licensed under AGPL v3.0
+
 The Proton API SDK is licensed by Proton AG under The MIT License.

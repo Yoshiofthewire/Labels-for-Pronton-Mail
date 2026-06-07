@@ -32,3 +32,10 @@ export async function postJSON<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body)
   });
 }
+
+export async function postFormData<T>(path: string, body: FormData): Promise<T> {
+  return requestJSON<T>(path, {
+    method: "POST",
+    body
+  });
+}

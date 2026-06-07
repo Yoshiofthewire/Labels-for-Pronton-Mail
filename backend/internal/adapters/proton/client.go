@@ -2,6 +2,7 @@ package proton
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"regexp"
@@ -30,6 +31,12 @@ type APIClient struct {
 	mgr        *protonapi.Manager
 	client     *protonapi.Client
 	labelByKey map[string]string
+}
+
+type tokenFile struct {
+	UID          string `json:"uid"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
 }
 
 func NewAPIClientFromEnv() *APIClient {
@@ -139,35 +146,38 @@ func (c *APIClient) ensureClient(ctx context.Context) (*protonapi.Client, error)
 		return c.client, nil
 	}
 
-	uid := strings.TrimSpace(os.Getenv("PROTON_UID"))
-	acc := strings.TrimSpace(os.Getenv("PROTON_ACCESS_TOKEN"))
-	ref := strings.TrimSpace(os.Getenv("PROTON_REFRESH_TOKEN"))
+	uid, acc, ref, err := readTokenFile()
+	if err != nil {
+		return nil, err
+	}
 	if uid != "" && acc != "" && ref != "" {
 		c.client = c.mgr.NewClient(uid, acc, ref)
 		return c.client, nil
 	}
 
-	username := strings.TrimSpace(os.Getenv("PROTON_USERNAME"))
-	password := os.Getenv("PROTON_PASSWORD")
-	if username == "" || password == "" {
-		return nil, errors.New("missing proton credentials; set PROTON_USERNAME and PROTON_PASSWORD")
-	}
+	return nil, errors.New("missing proton token credentials in token file")
+}
 
-	pc, auth, err := c.mgr.NewClientWithLogin(ctx, username, []byte(password))
+func readTokenFile() (string, string, string, error) {
+	path := strings.TrimSpace(os.Getenv("PROTON_AUTH_FILE"))
+	if path == "" {
+		path = "/lumo_lab/config/proton-auth.json"
+	}
+	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return "", "", "", errors.New("failed to read proton auth file")
 	}
-	if auth.TwoFA.Enabled&protonapi.HasTOTP != 0 {
-		totp := strings.TrimSpace(os.Getenv("PROTON_TOTP"))
-		if totp == "" {
-			return nil, errors.New("proton account requires TOTP; set PROTON_TOTP")
-		}
-		if err := pc.Auth2FA(ctx, protonapi.Auth2FAReq{TwoFactorCode: totp}); err != nil {
-			return nil, err
-		}
+	var tf tokenFile
+	if err := json.Unmarshal(b, &tf); err != nil {
+		return "", "", "", errors.New("failed to parse proton auth file")
 	}
-	c.client = pc
-	return c.client, nil
+	uid := strings.TrimSpace(tf.UID)
+	acc := strings.TrimSpace(tf.AccessToken)
+	ref := strings.TrimSpace(tf.RefreshToken)
+	if uid == "" || acc == "" || ref == "" {
+		return "", "", "", errors.New("proton auth file missing uid/accessToken/refreshToken")
+	}
+	return uid, acc, ref, nil
 }
 
 func (c *APIClient) ensureLabelID(ctx context.Context, name string) (string, error) {

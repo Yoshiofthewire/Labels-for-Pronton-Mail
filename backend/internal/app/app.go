@@ -174,7 +174,11 @@ func newLumoClient(cfg config.Config) lumo.Client {
 }
 
 func newProtonClient() proton.Client {
-	if os.Getenv("PROTON_USERNAME") != "" || os.Getenv("PROTON_UID") != "" {
+	path := strings.TrimSpace(os.Getenv("PROTON_AUTH_FILE"))
+	if path == "" {
+		path = "/lumo_lab/config/proton-auth.json"
+	}
+	if _, err := os.Stat(path); err == nil {
 		return proton.NewAPIClientFromEnv()
 	}
 	return &proton.StubClient{}

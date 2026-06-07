@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { getJSON, postJSON, putJSON } from "../api/client";
+import { ChangeEvent, useEffect, useState } from "react";
+import { getJSON, postFormData, postJSON, putJSON } from "../api/client";
 
 type AppConfig = {
   timezone: string;
@@ -19,6 +19,41 @@ type TuningResponse = {
   content: string;
   path?: string;
 };
+
+type LumoAuthStatus = {
+  exists: boolean;
+  path: string;
+  size?: number;
+  modifiedAt?: string;
+  localEnabled: boolean;
+};
+
+type LumoAuthUploadResponse = {
+  ok: boolean;
+  path: string;
+  filename: string;
+  restartOk: boolean;
+  restartError?: string;
+};
+
+type ProtonAuthStatus = {
+  exists: boolean;
+  path: string;
+  size?: number;
+  modifiedAt?: string;
+  parseOk: boolean;
+};
+
+type ProtonAuthUploadResponse = {
+  ok: boolean;
+  path: string;
+  filename: string;
+  conversionMethod?: string;
+  nextAction?: string;
+  error?: string;
+};
+
+type LumoAuthNoticeTone = "idle" | "success" | "warning" | "error";
 
 function normalizeLabelName(raw: string): string {
   return raw.replace(/^[-*]\s*/, "").replace(/:$/, "").trim();
@@ -214,6 +249,16 @@ export function ConfigPage() {
   const [allLabels, setAllLabels] = useState<string[]>([]);
   const [orderedLabels, setOrderedLabels] = useState<string[]>([]);
   const [labelDefinitions, setLabelDefinitions] = useState<Record<string, string>>({});
+  const [lumoAuth, setLumoAuth] = useState<LumoAuthStatus | null>(null);
+  const [lumoAuthFile, setLumoAuthFile] = useState<File | null>(null);
+  const [lumoAuthStatus, setLumoAuthStatus] = useState("");
+  const [lumoAuthTone, setLumoAuthTone] = useState<LumoAuthNoticeTone>("idle");
+  const [lumoAuthBusy, setLumoAuthBusy] = useState(false);
+  const [protonAuth, setProtonAuth] = useState<ProtonAuthStatus | null>(null);
+  const [protonAuthFile, setProtonAuthFile] = useState<File | null>(null);
+  const [protonAuthStatus, setProtonAuthStatus] = useState("");
+  const [protonAuthTone, setProtonAuthTone] = useState<LumoAuthNoticeTone>("idle");
+  const [protonAuthBusy, setProtonAuthBusy] = useState(false);
 
   function hydrateFromTuning(content: string, fallbackLabels: string[]) {
     const parsedLabels = parsePriorityLabels(content);
@@ -239,6 +284,26 @@ export function ConfigPage() {
     }
   }
 
+  async function loadLumoAuthStatus() {
+    try {
+      const status = await getJSON<LumoAuthStatus>("/api/lumo/auth");
+      setLumoAuth(status);
+    } catch {
+      setLumoAuthTone("error");
+      setLumoAuthStatus("Failed to load Lumo auth status.");
+    }
+  }
+
+  async function loadProtonAuthStatus() {
+    try {
+      const status = await getJSON<ProtonAuthStatus>("/api/proton/auth");
+      setProtonAuth(status);
+    } catch {
+      setProtonAuthTone("error");
+      setProtonAuthStatus("Failed to load Proton auth status.");
+    }
+  }
+
   function resetTuningTemplate() {
     const labels = orderedLabels.length > 0 ? orderedLabels : allLabels;
     setTuningText(buildTuningTemplate(labels, labelDefinitions));
@@ -249,9 +314,11 @@ export function ConfigPage() {
     Promise.all([
       getJSON<AppConfig>("/api/config"),
       getJSON<LabelsResponse>("/api/labels"),
-      getJSON<TuningResponse>("/api/tuning")
+	      getJSON<TuningResponse>("/api/tuning"),
+	      getJSON<LumoAuthStatus>("/api/lumo/auth"),
+	      getJSON<ProtonAuthStatus>("/api/proton/auth")
     ])
-      .then(([data, labelsData, tuningData]) => {
+      .then(([data, labelsData, tuningData, lumoAuthData, protonAuthData]) => {
         setCfg(data);
         setAllowlistText((data.labels?.allowlist ?? []).join(", "));
         const all = Array.from(new Set([...(labelsData.proton ?? []), ...(labelsData.configured ?? [])])).filter(Boolean);
@@ -259,6 +326,8 @@ export function ConfigPage() {
         const content = tuningData.content ?? "";
         setTuningText(content);
         hydrateFromTuning(content, all);
+        setLumoAuth(lumoAuthData);
+        setProtonAuth(protonAuthData);
       })
       .catch(() => setStatus("Failed to load config. Please login first."));
   }, []);
@@ -317,7 +386,7 @@ export function ConfigPage() {
     }
   }
 
-  async function runLumoTest() {
+  async function runLumoTest(): Promise<boolean> {
     setTestBusy(true);
     setTestResult("");
     try {
@@ -327,15 +396,95 @@ export function ConfigPage() {
       );
       if (!result.ok) {
         setTestResult(`Lumo test failed: ${result.error ?? "unknown error"}`);
+        return false;
       } else {
         setTestResult(
           `Lumo test passed\nBase URL: ${result.baseUrl ?? ""}\nPath: ${result.path ?? ""}\nResponse: ${result.response ?? ""}`
         );
+        return true;
       }
     } catch {
       setTestResult("Lumo test request failed. Make sure you are logged in and Lumo is reachable.");
+      return false;
     } finally {
       setTestBusy(false);
+    }
+  }
+
+  function onLumoAuthFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setLumoAuthFile(event.target.files?.[0] ?? null);
+  }
+
+  function onProtonAuthFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setProtonAuthFile(event.target.files?.[0] ?? null);
+  }
+
+  async function uploadLumoAuth() {
+    if (!lumoAuthFile) {
+      setLumoAuthTone("warning");
+      setLumoAuthStatus("Select the auth.json file generated by generate_auth.js first.");
+      return;
+    }
+    const form = new FormData();
+    form.append("authFile", lumoAuthFile);
+    setLumoAuthBusy(true);
+    setLumoAuthTone("idle");
+    setLumoAuthStatus("");
+    try {
+      const result = await postFormData<LumoAuthUploadResponse>("/api/lumo/auth", form);
+      if (result.restartOk) {
+        const testOk = await runLumoTest();
+        setLumoAuthTone(testOk ? "success" : "warning");
+        setLumoAuthStatus(
+          testOk
+            ? `Auth file uploaded, Lumo restarted, and connectivity test passed using ${result.filename}.`
+            : `Auth file uploaded and Lumo restarted using ${result.filename}, but the follow-up Lumo test failed. Review the test output below.`
+        );
+      } else {
+        setLumoAuthTone("warning");
+        setLumoAuthStatus(
+          `Auth file uploaded, but Lumo restart needs attention: ${result.restartError ?? "unknown restart failure"}. If supervisorctl is unavailable, use the repair action to restart the container, then run Lumo Test again.`
+        );
+      }
+      setLumoAuthFile(null);
+      await loadLumoAuthStatus();
+    } catch {
+      setLumoAuthTone("error");
+      setLumoAuthStatus("Failed to upload Lumo auth file.");
+    } finally {
+      setLumoAuthBusy(false);
+    }
+  }
+
+  async function uploadProtonAuth() {
+    if (!protonAuthFile) {
+      setProtonAuthTone("warning");
+      setProtonAuthStatus("Select the generated auth.json file first.");
+      return;
+    }
+    const form = new FormData();
+    form.append("authFile", protonAuthFile);
+    setProtonAuthBusy(true);
+    setProtonAuthTone("idle");
+    setProtonAuthStatus("");
+    try {
+      const result = await postFormData<ProtonAuthUploadResponse>("/api/proton/auth", form);
+      if (!result.ok) {
+        setProtonAuthTone("error");
+        setProtonAuthStatus(result.error ?? "Failed to convert Proton auth file.");
+      } else {
+        setProtonAuthTone("success");
+        setProtonAuthStatus(
+          `Proton auth converted from ${result.filename}. ${result.nextAction ?? "Restart the app container to apply new Proton tokens."}`
+        );
+      }
+      setProtonAuthFile(null);
+      await loadProtonAuthStatus();
+    } catch {
+      setProtonAuthTone("error");
+      setProtonAuthStatus("Failed to upload or convert Proton auth file.");
+    } finally {
+      setProtonAuthBusy(false);
     }
   }
 
@@ -372,6 +521,57 @@ export function ConfigPage() {
         <div>Allowlist Labels (comma-separated)</div>
         <input value={allowlistText} onChange={(e) => setAllowlistText(e.target.value)} />
       </label>
+
+      <hr />
+      <h3>Lumo Authentication</h3>
+      <p>Run generate_auth.js locally, then upload the resulting auth.json here. Do not paste raw Lumo credentials into this app.</p>
+      <button type="button" onClick={loadLumoAuthStatus}>
+        Refresh Lumo Auth Status
+      </button>
+      {lumoAuth ? (
+        <div style={{ border: "1px solid var(--line)", borderRadius: 6, padding: 10, marginTop: 10, marginBottom: 10 }}>
+          <p>Local Lumo Enabled: {lumoAuth.localEnabled ? "Yes" : "No"}</p>
+          <p>Auth File Present: {lumoAuth.exists ? "Yes" : "No"}</p>
+          <p>Auth File Path: {lumoAuth.path}</p>
+          {lumoAuth.exists ? <p>Size: {lumoAuth.size ?? 0} bytes</p> : null}
+          {lumoAuth.modifiedAt ? <p>Updated: {lumoAuth.modifiedAt}</p> : null}
+        </div>
+      ) : null}
+      <label>
+        <div>Upload auth.json from generate_auth.js</div>
+        <input type="file" accept="application/json,.json" onChange={onLumoAuthFileChange} />
+      </label>
+      <button type="button" onClick={uploadLumoAuth} disabled={lumoAuthBusy}>
+        {lumoAuthBusy ? "Uploading and Testing..." : "Upload, Restart, and Test Lumo"}
+      </button>
+      {lumoAuthStatus ? <p className={`notice notice-${lumoAuthTone}`}>{lumoAuthStatus}</p> : null}
+      {lumoAuthTone === "warning" ? (
+        <p>If the restart step cannot run in this container, use the existing repair action to restart the stack and then rerun Lumo Test.</p>
+      ) : null}
+
+      <hr />
+      <h3>Proton Authentication</h3>
+      <p>Upload the same generated auth.json to extract Proton API tokens for the Go backend.</p>
+      <button type="button" onClick={loadProtonAuthStatus}>
+        Refresh Proton Auth Status
+      </button>
+      {protonAuth ? (
+        <div style={{ border: "1px solid var(--line)", borderRadius: 6, padding: 10, marginTop: 10, marginBottom: 10 }}>
+          <p>Token File Present: {protonAuth.exists ? "Yes" : "No"}</p>
+          <p>Token File Path: {protonAuth.path}</p>
+          {protonAuth.exists ? <p>Size: {protonAuth.size ?? 0} bytes</p> : null}
+          {protonAuth.modifiedAt ? <p>Updated: {protonAuth.modifiedAt}</p> : null}
+          <p>Parseable: {protonAuth.parseOk ? "Yes" : "No"}</p>
+        </div>
+      ) : null}
+      <label>
+        <div>Upload auth.json for Proton token conversion</div>
+        <input type="file" accept="application/json,.json" onChange={onProtonAuthFileChange} />
+      </label>
+      <button type="button" onClick={uploadProtonAuth} disabled={protonAuthBusy}>
+        {protonAuthBusy ? "Converting..." : "Upload and Convert Proton Auth"}
+      </button>
+      {protonAuthStatus ? <p className={`notice notice-${protonAuthTone}`}>{protonAuthStatus}</p> : null}
 
       <hr />
       <h3>Tuning Instructions</h3>

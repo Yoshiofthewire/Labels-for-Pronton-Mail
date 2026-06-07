@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -26,17 +29,19 @@ import (
 )
 
 type Server struct {
-	mu         sync.RWMutex
-	cfg        config.Config
-	logger     *logging.Logger
-	store      *state.Store
-	health     *health.Service
-	configPath string
-	logPath    string
-	adminPath  string
-	tuningPath string
-	proton     proton.Client
-	sessions   map[string]time.Time
+	mu             sync.RWMutex
+	cfg            config.Config
+	logger         *logging.Logger
+	store          *state.Store
+	health         *health.Service
+	configPath     string
+	logPath        string
+	adminPath      string
+	tuningPath     string
+	lumoAuthPath   string
+	protonAuthPath string
+	proton         proton.Client
+	sessions       map[string]time.Time
 }
 
 func NewServer(cfg config.Config, logger *logging.Logger, store *state.Store, healthSvc *health.Service, protonClient proton.Client) *Server {
@@ -44,7 +49,9 @@ func NewServer(cfg config.Config, logger *logging.Logger, store *state.Store, he
 	logPath := filepath.Join(envOrDefault("LOG_DIR", "/lumo_lab/logs"), "app.log")
 	adminPath := filepath.Join(envOrDefault("CONFIG_DIR", "/lumo_lab/config"), "admin.env")
 	tuningPath := resolveTuningPath()
-	return &Server{cfg: cfg, logger: logger, store: store, health: healthSvc, configPath: configPath, logPath: logPath, adminPath: adminPath, tuningPath: tuningPath, proton: protonClient, sessions: map[string]time.Time{}}
+	lumoAuthPath := envOrDefault("LUMO_AUTH_FILE", "/lumo_lab/config/lumo-auth.json")
+	protonAuthPath := envOrDefault("PROTON_AUTH_FILE", "/lumo_lab/config/proton-auth.json")
+	return &Server{cfg: cfg, logger: logger, store: store, health: healthSvc, configPath: configPath, logPath: logPath, adminPath: adminPath, tuningPath: tuningPath, lumoAuthPath: lumoAuthPath, protonAuthPath: protonAuthPath, proton: protonClient, sessions: map[string]time.Time{}}
 }
 
 func (s *Server) Run() error {
@@ -60,6 +67,8 @@ func (s *Server) Run() error {
 	mux.HandleFunc("/api/labels", s.withAuth(s.handleLabels))
 	mux.HandleFunc("/api/decisions", s.withAuth(s.handleDecisions))
 	mux.HandleFunc("/api/logs", s.withAuth(s.handleLogs))
+	mux.HandleFunc("/api/lumo/auth", s.withAuth(s.handleLumoAuth))
+	mux.HandleFunc("/api/proton/auth", s.withAuth(s.handleProtonAuth))
 	mux.HandleFunc("/api/lumo/test", s.withAuth(s.handleLumoTest))
 	mux.HandleFunc("/api/tuning", s.withAuth(s.handleTuning))
 	mux.HandleFunc("/api/setup", s.handleSetup)
@@ -188,6 +197,179 @@ func (s *Server) handleTuning(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleLumoAuth(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		info, err := os.Stat(s.lumoAuthPath)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				writeJSON(w, http.StatusOK, map[string]any{
+					"exists":       false,
+					"path":         s.lumoAuthPath,
+					"localEnabled": strings.EqualFold(envOrDefault("LUMO_LOCAL_ENABLED", "true"), "true"),
+				})
+				return
+			}
+			http.Error(w, "failed to read lumo auth status", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"exists":       true,
+			"path":         s.lumoAuthPath,
+			"size":         info.Size(),
+			"modifiedAt":   info.ModTime().UTC().Format(time.RFC3339),
+			"localEnabled": strings.EqualFold(envOrDefault("LUMO_LOCAL_ENABLED", "true"), "true"),
+		})
+	case http.MethodPost:
+		if err := r.ParseMultipartForm(8 << 20); err != nil {
+			http.Error(w, "invalid multipart request", http.StatusBadRequest)
+			return
+		}
+		file, header, err := r.FormFile("authFile")
+		if err != nil {
+			http.Error(w, "authFile is required", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		payload, err := io.ReadAll(io.LimitReader(file, 8<<20))
+		if err != nil {
+			http.Error(w, "failed to read auth file", http.StatusBadRequest)
+			return
+		}
+		if len(strings.TrimSpace(string(payload))) == 0 {
+			http.Error(w, "auth file is empty", http.StatusBadRequest)
+			return
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal(payload, &parsed); err != nil {
+			http.Error(w, "auth file is not valid json", http.StatusBadRequest)
+			return
+		}
+		if len(parsed) == 0 {
+			http.Error(w, "auth file json is empty", http.StatusBadRequest)
+			return
+		}
+		if err := os.MkdirAll(filepath.Dir(s.lumoAuthPath), 0o755); err != nil {
+			http.Error(w, "failed to create auth directory", http.StatusInternalServerError)
+			return
+		}
+		if err := os.WriteFile(s.lumoAuthPath, payload, 0o600); err != nil {
+			http.Error(w, "failed to save auth file", http.StatusInternalServerError)
+			return
+		}
+		if err := restartLumoProcess(r.Context()); err != nil {
+			writeJSON(w, http.StatusAccepted, map[string]any{
+				"ok":           true,
+				"path":         s.lumoAuthPath,
+				"filename":     header.Filename,
+				"restartOk":    false,
+				"restartError": err.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":        true,
+			"path":      s.lumoAuthPath,
+			"filename":  header.Filename,
+			"restartOk": true,
+		})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleProtonAuth(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		info, err := os.Stat(s.protonAuthPath)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				writeJSON(w, http.StatusOK, map[string]any{"exists": false, "path": s.protonAuthPath, "parseOk": false})
+				return
+			}
+			http.Error(w, "failed to read proton auth status", http.StatusInternalServerError)
+			return
+		}
+		parseOk := false
+		if _, _, _, err := readProtonTokenFile(s.protonAuthPath); err == nil {
+			parseOk = true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"exists":     true,
+			"path":       s.protonAuthPath,
+			"size":       info.Size(),
+			"modifiedAt": info.ModTime().UTC().Format(time.RFC3339),
+			"parseOk":    parseOk,
+		})
+	case http.MethodPost:
+		if err := r.ParseMultipartForm(16 << 20); err != nil {
+			http.Error(w, "invalid multipart request", http.StatusBadRequest)
+			return
+		}
+		file, header, err := r.FormFile("authFile")
+		if err != nil {
+			http.Error(w, "authFile is required", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		payload, err := io.ReadAll(io.LimitReader(file, 16<<20))
+		if err != nil {
+			http.Error(w, "failed to read auth file", http.StatusBadRequest)
+			return
+		}
+		if len(strings.TrimSpace(string(payload))) == 0 {
+			http.Error(w, "auth file is empty", http.StatusBadRequest)
+			return
+		}
+		uid, access, refresh, clientID, err := extractProtonTokensFromStorageState(payload)
+		if err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+
+		if err := os.MkdirAll(filepath.Dir(s.protonAuthPath), 0o755); err != nil {
+			http.Error(w, "failed to create proton auth directory", http.StatusInternalServerError)
+			return
+		}
+		content, err := json.MarshalIndent(map[string]any{
+			"uid":          uid,
+			"accessToken":  access,
+			"refreshToken": refresh,
+			"source":       "lumo-storage-state",
+			"clientID":     clientID,
+			"updatedAt":    time.Now().UTC().Format(time.RFC3339),
+		}, "", "  ")
+		if err != nil {
+			http.Error(w, "failed to encode proton auth output", http.StatusInternalServerError)
+			return
+		}
+		tmpPath := s.protonAuthPath + ".tmp"
+		if err := os.WriteFile(tmpPath, content, 0o600); err != nil {
+			http.Error(w, "failed to write proton auth file", http.StatusInternalServerError)
+			return
+		}
+		if err := os.Rename(tmpPath, s.protonAuthPath); err != nil {
+			http.Error(w, "failed to finalize proton auth file", http.StatusInternalServerError)
+			return
+		}
+
+		scheduleContainerRestart(s.logger, "proton auth updated", 750*time.Millisecond)
+
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"ok":               true,
+			"path":             s.protonAuthPath,
+			"filename":         header.Filename,
+			"conversionMethod": "cookie-extract",
+			"restartRequested": true,
+			"nextAction":       "Automatic restart requested to apply new Proton auth file.",
+		})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -238,11 +420,7 @@ func (s *Server) handleRepair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.logger.Error("manual repair requested")
-	go func() {
-		time.Sleep(250 * time.Millisecond)
-		_ = syscall.Kill(1, syscall.SIGTERM)
-		os.Exit(2)
-	}()
+	scheduleContainerRestart(s.logger, "manual repair", 250*time.Millisecond)
 	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "message": "restart requested"})
 }
 
@@ -462,6 +640,17 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+func scheduleContainerRestart(logger *logging.Logger, reason string, delay time.Duration) {
+	go func() {
+		time.Sleep(delay)
+		if logger != nil {
+			logger.Error("container restart requested", "reason", reason)
+		}
+		_ = syscall.Kill(1, syscall.SIGTERM)
+		os.Exit(2)
+	}()
+}
+
 func envInt(name string, fallback int) int {
 	raw := os.Getenv(name)
 	if raw == "" {
@@ -493,6 +682,131 @@ func resolveTuningPath() string {
 		}
 	}
 	return "/lumo_lab/config/TUNING.md"
+}
+
+func restartLumoProcess(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, "supervisorctl", "restart", "lumo")
+	cmd.Env = os.Environ()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(out))
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("restart lumo: %s", message)
+	}
+	return nil
+}
+
+type storageStateCookie struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Domain string `json:"domain"`
+}
+
+type storageState struct {
+	Cookies []storageStateCookie `json:"cookies"`
+}
+
+type refreshCookiePayload struct {
+	ClientID     string `json:"ClientID"`
+	RefreshToken string `json:"RefreshToken"`
+	UID          string `json:"UID"`
+}
+
+func extractProtonTokensFromStorageState(payload []byte) (string, string, string, string, error) {
+	var state storageState
+	if err := json.Unmarshal(payload, &state); err != nil {
+		return "", "", "", "", errors.New("storageState auth file is not valid json")
+	}
+	if len(state.Cookies) == 0 {
+		return "", "", "", "", errors.New("storageState auth file has no cookies")
+	}
+
+	type refreshData struct {
+		refreshToken string
+		clientID     string
+		domain       string
+	}
+	accessByUID := map[string]string{}
+	refreshByUID := map[string]refreshData{}
+
+	for _, cookie := range state.Cookies {
+		if strings.HasPrefix(cookie.Name, "AUTH-") {
+			uid := strings.TrimPrefix(cookie.Name, "AUTH-")
+			if strings.TrimSpace(uid) != "" && strings.TrimSpace(cookie.Value) != "" {
+				if _, ok := accessByUID[uid]; !ok || strings.Contains(cookie.Domain, "account.proton.me") {
+					accessByUID[uid] = strings.TrimSpace(cookie.Value)
+				}
+			}
+		}
+		if strings.HasPrefix(cookie.Name, "REFRESH-") {
+			decoded, err := url.QueryUnescape(cookie.Value)
+			if err != nil {
+				continue
+			}
+			var parsed refreshCookiePayload
+			if err := json.Unmarshal([]byte(decoded), &parsed); err != nil {
+				continue
+			}
+			uid := strings.TrimSpace(parsed.UID)
+			refresh := strings.TrimSpace(parsed.RefreshToken)
+			if uid == "" || refresh == "" {
+				continue
+			}
+			current, ok := refreshByUID[uid]
+			if !ok || strings.EqualFold(parsed.ClientID, "WebAccount") {
+				refreshByUID[uid] = refreshData{refreshToken: refresh, clientID: strings.TrimSpace(parsed.ClientID), domain: cookie.Domain}
+				continue
+			}
+			if strings.Contains(cookie.Domain, "account.proton.me") && !strings.Contains(current.domain, "account.proton.me") {
+				refreshByUID[uid] = refreshData{refreshToken: refresh, clientID: strings.TrimSpace(parsed.ClientID), domain: cookie.Domain}
+			}
+		}
+	}
+
+	selectedUID := ""
+	selectedClientID := ""
+	for uid, refresh := range refreshByUID {
+		if _, ok := accessByUID[uid]; !ok {
+			continue
+		}
+		if selectedUID == "" || strings.EqualFold(refresh.clientID, "WebAccount") {
+			selectedUID = uid
+			selectedClientID = refresh.clientID
+			if strings.EqualFold(refresh.clientID, "WebAccount") {
+				break
+			}
+		}
+	}
+	if selectedUID == "" {
+		return "", "", "", "", errors.New("could not extract matching AUTH/REFRESH token pair from storageState cookies")
+	}
+	refresh := refreshByUID[selectedUID].refreshToken
+	access := accessByUID[selectedUID]
+	if strings.TrimSpace(refresh) == "" || strings.TrimSpace(access) == "" {
+		return "", "", "", "", errors.New("extracted proton token pair is incomplete")
+	}
+	return selectedUID, access, refresh, selectedClientID, nil
+}
+
+func readProtonTokenFile(path string) (string, string, string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", "", err
+	}
+	var parsed struct {
+		UID          string `json:"uid"`
+		AccessToken  string `json:"accessToken"`
+		RefreshToken string `json:"refreshToken"`
+	}
+	if err := json.Unmarshal(b, &parsed); err != nil {
+		return "", "", "", err
+	}
+	if strings.TrimSpace(parsed.UID) == "" || strings.TrimSpace(parsed.AccessToken) == "" || strings.TrimSpace(parsed.RefreshToken) == "" {
+		return "", "", "", errors.New("incomplete proton auth file")
+	}
+	return strings.TrimSpace(parsed.UID), strings.TrimSpace(parsed.AccessToken), strings.TrimSpace(parsed.RefreshToken), nil
 }
 
 func tailLines(path string, limit int) ([]string, error) {

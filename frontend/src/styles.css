@@ -122,6 +122,25 @@ pre {
   white-space: pre-wrap;
 }
 
+.notice {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+
+.notice-success {
+  background: rgba(239, 249, 240, 0.75);
+}
+
+.notice-warning {
+  background: rgba(221, 200, 196, 0.8);
+}
+
+.notice-error {
+  background: rgba(202, 156, 225, 0.45);
+}
+
 @media (max-width: 900px) {
   .shell {
     grid-template-columns: 1fr;
