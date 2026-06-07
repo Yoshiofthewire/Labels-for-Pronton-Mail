@@ -518,7 +518,12 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "auth config unavailable", http.StatusInternalServerError)
 		return
 	}
-	if req.OldPassword != admin["ADMIN_PASS"] {
+	mustChange := strings.EqualFold(admin["MUST_CHANGE_PASSWORD"], "true")
+	if !mustChange && req.OldPassword != admin["ADMIN_PASS"] {
+		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		return
+	}
+	if mustChange && strings.TrimSpace(req.OldPassword) != "" && req.OldPassword != admin["ADMIN_PASS"] {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
