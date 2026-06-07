@@ -75,6 +75,10 @@ For each eligible message:
 
 - Docker + Docker Compose
 
+Authentication setup guide:
+
+- [AuthHowTo.md](AuthHowTo.md)
+
 Optional for local non-Docker development:
 
 - Go 1.22+
@@ -91,8 +95,8 @@ cp .env.example .env
 
 2. Edit `.env` values:
 
-- `PROTON_SECRET_KEY`
-- `PROTON_USERNAME` / `PROTON_PASSWORD` (or token-based Proton vars)
+- `PROTON_USERNAME` + `PROTON_PASSWORD` (or token mode with `PROTON_UID`, `PROTON_ACCESS_TOKEN`, `PROTON_REFRESH_TOKEN`)
+- `PROTON_TOTP` if your Proton account requires 2FA
 - `LUMO_API_KEY` if your Lumo route requires it
 - `LUMO_BASE_URL` (defaults to local in-container Lumo)
 
