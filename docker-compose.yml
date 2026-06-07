@@ -1,0 +1,23 @@
+services:
+  lumo-lab:
+    build: .
+    container_name: lumo-lab
+    ports:
+      - "5866:5866"
+    environment:
+      WEB_PORT: 5866
+      TZ: ${TZ:-America/New_York}
+      PROTON_SECRET_KEY: ${PROTON_SECRET_KEY}
+      LUMO_API_KEY: ${LUMO_API_KEY}
+      LUMO_BASE_URL: ${LUMO_BASE_URL:-http://127.0.0.1:3333}
+      LUMO_LOCAL_ENABLED: ${LUMO_LOCAL_ENABLED:-true}
+    volumes:
+      - lumo_config:/lumo_lab/config
+      - lumo_logs:/lumo_lab/logs
+      - lumo_state:/lumo_lab/state
+    restart: unless-stopped
+
+volumes:
+  lumo_config:
+  lumo_logs:
+  lumo_state:

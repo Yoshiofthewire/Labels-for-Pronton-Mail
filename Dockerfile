@@ -1,0 +1,44 @@
+FROM golang:1.22-alpine AS backend-builder
+WORKDIR /app
+COPY backend/go.mod backend/go.sum* ./backend/
+RUN cd backend && go mod download
+COPY backend ./backend
+RUN cd backend && go build -o /app/bin/lumo-lab ./cmd/main.go
+
+FROM node:20-alpine AS frontend-builder
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install
+COPY frontend .
+RUN npm run build
+
+FROM alpine:3.20
+RUN apk add --no-cache supervisor tzdata nodejs npm git
+
+WORKDIR /opt/lumo-lab
+COPY --from=backend-builder /app/bin/lumo-lab /usr/local/bin/lumo-lab
+COPY --from=frontend-builder /frontend/dist /opt/lumo-lab/frontend
+COPY GARDRAIL.md /opt/lumo-lab/GARDRAIL.md
+COPY TUNING.md /opt/lumo-lab/TUNING.md
+COPY supervisord.conf /etc/supervisord.conf
+COPY scripts /opt/lumo-lab/scripts
+
+RUN chmod +x /opt/lumo-lab/scripts/*.sh
+
+RUN git clone --depth 1 https://github.com/carlostkd/Lumo-Api-V2.git /opt/lumo-api-v2 \
+	&& cd /opt/lumo-api-v2 \
+	&& npm install playwright
+
+ENV CONFIG_DIR=/lumo_lab/config
+ENV LOG_DIR=/lumo_lab/logs
+ENV STATE_DIR=/lumo_lab/state
+ENV WEB_PORT=5866
+ENV TZ=America/New_York
+ENV LUMO_LOCAL_ENABLED=true
+ENV LUMO_LOCAL_DIR=/opt/lumo-api-v2
+ENV LUMO_AUTH_FILE=/lumo_lab/config/lumo-auth.json
+
+VOLUME ["/lumo_lab/config", "/lumo_lab/logs", "/lumo_lab/state"]
+EXPOSE 5866
+
+CMD ["supervisord", "-c", "/etc/supervisord.conf"]
