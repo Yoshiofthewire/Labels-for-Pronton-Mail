@@ -47,9 +47,6 @@ export function LoginPage({ auth, onAuthChanged }: LoginPageProps) {
         if (res.setup?.admin_user) {
           setUsername(res.setup.admin_user);
         }
-        if (res.setup?.must_change_password) {
-          setNeedsPasswordChange(true);
-        }
       })
       .catch(() => {
         // Keep defaults if setup endpoint is unavailable.
@@ -84,10 +81,16 @@ export function LoginPage({ auth, onAuthChanged }: LoginPageProps) {
     e.preventDefault();
     setBusy(true);
     setStatus("");
+    const currentPassword = oldPassword || password;
+    if (!currentPassword) {
+      setStatus("Enter your current password from initial sign-in.");
+      setBusy(false);
+      return;
+    }
     try {
       await postJSON<{ ok: boolean }>("/api/auth/password", {
         username,
-        oldPassword,
+        oldPassword: currentPassword,
         newPassword
       });
       await onAuthChanged();
@@ -97,8 +100,13 @@ export function LoginPage({ auth, onAuthChanged }: LoginPageProps) {
       setNewPassword("");
       setStatus("Password updated. You can now continue.");
       navigate("/status", { replace: true });
-    } catch {
-      setStatus("Password change failed. Verify current password.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      if (message.includes("401")) {
+        setStatus("Password change failed. Sign in first, then try again.");
+      } else {
+        setStatus("Password change failed. Verify current password.");
+      }
     } finally {
       setBusy(false);
     }
@@ -134,7 +142,7 @@ export function LoginPage({ auth, onAuthChanged }: LoginPageProps) {
           <p>Your account requires a password update before you can continue.</p>
           <label>
             <div>Username</div>
-            <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
+            <input value={username} autoComplete="username" readOnly />
           </label>
           <label>
             <div>Current Password</div>

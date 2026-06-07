@@ -518,7 +518,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "auth config unavailable", http.StatusInternalServerError)
 		return
 	}
-	if req.Username != admin["ADMIN_USER"] || req.OldPassword != admin["ADMIN_PASS"] {
+	if req.OldPassword != admin["ADMIN_PASS"] {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}

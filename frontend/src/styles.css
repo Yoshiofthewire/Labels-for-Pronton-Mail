@@ -1,10 +1,10 @@
 :root {
-  --bg: #eff9f0;
-  --panel: #ddc8c4;
-  --ink: #23022e;
-  --accent: #573280;
-  --accent-soft: #ca9ce1;
-  --line: #573280;
+  --bg: #210124;
+  --panel: #7c9eb2;
+  --ink: #eabfcb;
+  --accent: #a4508b;
+  --accent-soft: #c191a1;
+  --line: #eabfcb;
   --mono: "IBM Plex Mono", monospace;
   --sans: "Space Grotesk", sans-serif;
 }
@@ -17,7 +17,7 @@ body {
   margin: 0;
   font-family: var(--sans);
   color: var(--ink);
-  background: radial-gradient(circle at top right, #ca9ce1, transparent 45%), var(--bg);
+  background: radial-gradient(circle at top right, #a4508b, transparent 45%), var(--bg);
 }
 
 .shell {
@@ -29,7 +29,7 @@ body {
 .sidebar {
   border-right: 1px solid var(--line);
   padding: 20px;
-  background: linear-gradient(180deg, #ddc8c4, #eff9f0);
+  background: linear-gradient(180deg, #a4508b, #210124);
 }
 
 .sidebar h1 {
@@ -48,7 +48,7 @@ body {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: rgba(239, 249, 240, 0.7);
+  background: rgba(124, 158, 178, 0.35);
 }
 
 .session-meta p {
@@ -80,7 +80,7 @@ body {
   border-radius: 14px;
   padding: 18px;
   margin-bottom: 18px;
-  box-shadow: 0 8px 30px rgba(87, 50, 128, 0.16);
+  box-shadow: 0 8px 30px rgba(33, 1, 36, 0.35);
 }
 
 .auth-form {
@@ -130,15 +130,15 @@ pre {
 }
 
 .notice-success {
-  background: rgba(239, 249, 240, 0.75);
+  background: rgba(124, 158, 178, 0.38);
 }
 
 .notice-warning {
-  background: rgba(221, 200, 196, 0.8);
+  background: rgba(193, 145, 161, 0.45);
 }
 
 .notice-error {
-  background: rgba(202, 156, 225, 0.45);
+  background: rgba(164, 80, 139, 0.45);
 }
 
 @media (max-width: 900px) {
