@@ -1,5 +1,5 @@
 
-<img src="https://github.com/Yoshiofthewire/Lumo-Labels/blob/529ed1ab4b07a8ae382d45f7fb477a11c386c017/lumolabel.png"  />
+<img src="https://github.com/Yoshiofthewire/Lumo-Labels/blob/f858ef92df478cffb12844f103c43d6a2b6b851c/lumolabel.png"  />
 
 # Lumo Labels: Proton Mail Auto-Labeler
 
