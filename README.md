@@ -260,3 +260,5 @@ Respect upstream licenses for dependencies.
 The Lumo API V2 is licensed under AGPL v3.0
 
 The Proton API SDK is licensed by Proton AG under The MIT License.
+
+Lumo Labels is not associated with Proton AG
