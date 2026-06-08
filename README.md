@@ -160,8 +160,8 @@ Then update `LUMO_BASE_URL` to the external endpoint.
 
 ## Notes
 
-- `GARDRAIL.md` is prepended to every classify request.
-- `TUNING.md` is prepended to every classify request and is editable from the UI.
+- `GARDRAIL.md` is prepended to every session.
+- `TUNING.md` is prepended to every session and is editable from the UI.
 - The poller performs an unread sweep on startup after warmup so new labels can be applied immediately.
 - `GET|POST /api/proton/auth`
 - `POST /api/lumo/test`
@@ -220,7 +220,6 @@ npm run dev
 
 - Local session-based auth is in-memory and not yet distributed/multi-instance aware
 - Lumo API V2 itself requires manual session bootstrap (`auth.json`) from upstream flow
-- Frontend still has placeholder pages for some advanced operational views
 - Tuning editor parsing is best-effort for common markdown patterns; unusual custom formats may need manual adjustment
 
 ## Troubleshooting
