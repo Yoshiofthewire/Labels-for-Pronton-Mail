@@ -147,13 +147,8 @@ The image installs `carlostkd/Lumo-Api-V2` and runs it under `supervisord`.
 
 Lumo API V2 requires an auth session file (`auth.json`) produced by its login flow.
 
-For this project, place that file at:
-
-- `/lumo_lab/config/lumo-auth.json`
-
-`start-lumo.sh` copies it into the Lumo runtime directory before launching `node lumo.js`.
-
-If missing, the Lumo process logs a warning and idles instead of crashing the whole container.
+You can find the script to generate the auth file in the scripts folder.
+You can then upload those auth files to the web front end once the docker is running.
 
 ### Disable local Lumo process
 
