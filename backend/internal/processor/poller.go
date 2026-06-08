@@ -140,6 +140,8 @@ func (p *Poller) tick() {
 				Status:    "failed",
 				Detail:    err.Error(),
 			})
+			// Retire the message so it is not retried on the next tick.
+			_ = p.store.MarkProcessed(msg.ID)
 			continue
 		}
 		processedCount++
@@ -177,13 +179,55 @@ func isProtonAuthUnhealthyError(err error) bool {
 	return false
 }
 
+// recentDecisionsContext returns a short summary of the last N applied decisions to give Lumo labelling context.
+func (p *Poller) recentDecisionsContext(limit int) string {
+	all := p.store.Decisions(50)
+	var applied []state.Decision
+	for _, d := range all {
+		if d.Status == "applied" && d.Label != "" {
+			applied = append(applied, d)
+			if len(applied) >= limit {
+				break
+			}
+		}
+	}
+	if len(applied) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("Recent labeling decisions for reference:\n")
+	for _, d := range applied {
+		sb.WriteString("- From: ")
+		sb.WriteString(d.Sender)
+		if d.Subject != "" {
+			sb.WriteString(", Subject: ")
+			sb.WriteString(d.Subject)
+		}
+		sb.WriteString(" → Label: ")
+		sb.WriteString(d.Label)
+		sb.WriteString("\n")
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
 func (p *Poller) handleMessage(ctx context.Context, msg proton.Message) error {
 	body := strings.TrimSpace(msg.Body)
 	if len(body) > 2000 {
 		body = body[:2000]
 	}
 	redacted := p.redaction.Apply(body)
-	label, err := classifyWithRetry(ctx, p.lumo, p.cfg.Labels.Allowlist, msg.Sender, msg.Subject, redacted)
+
+	decisionsCtx := p.recentDecisionsContext(10)
+	bodyWithContext := redacted
+	if decisionsCtx != "" {
+		if bodyWithContext != "" {
+			bodyWithContext = redacted + "\n---\n" + decisionsCtx
+		} else {
+			bodyWithContext = decisionsCtx
+		}
+	}
+
+	label, err := classifyWithRetry(ctx, p.lumo, p.cfg.Labels.Allowlist, msg.Sender, msg.Subject, bodyWithContext)
 	if err != nil {
 		return err
 	}

@@ -8,7 +8,7 @@ const REFRESH_OPTIONS = [
   { label: "10s", value: 10 },
   { label: "30s", value: 30 },
 ];
-const HIDDEN_LOG_PREFIXES = ["bootstrap"];
+const HIDDEN_LOG_PREFIXES = ["bootstrap", "lumo.", "proton"];
 
 function tabLabel(filename: string): string {
   return filename.replace(/\.log$/, "").replace(/[._-]/g, " ");

@@ -220,7 +220,7 @@ func (c *HTTPClient) runWarmup(ctx context.Context) error {
 func (c *HTTPClient) sendWarmupDocument(ctx context.Context, name, content string) error {
 	prompt := buildWarmupPrompt(name, content)
 	payload := []byte(fmt.Sprintf("{\"prompt\":%s, \"webSearch\":false}", strconv.Quote(prompt)))
-	appendLumoOutputLog(fmt.Sprintf("[LUMO WARMUP %s] prompt sent", strings.ToUpper(name)))
+	appendLumoServerLog(fmt.Sprintf("[LUMO WARMUP %s] sending prompt", strings.ToUpper(name)))
 	var lastErr error
 	for attempt := 0; attempt < warmupMaxAttempts; attempt++ {
 		result, err := c.classifyOnceWithTimeout(ctx, payload, warmupRequestTimeout, false)
@@ -228,7 +228,7 @@ func (c *HTTPClient) sendWarmupDocument(ctx context.Context, name, content strin
 			if !isThoughtAck(result) {
 				lastErr = fmt.Errorf("lumo %s warmup failed: expected 'Thought about this' acknowledgement, got %q", name, strings.TrimSpace(result))
 			} else {
-				appendLumoOutputLog(fmt.Sprintf("[LUMO WARMUP %s] Thought about this", strings.ToUpper(name)))
+				appendLumoServerLog(fmt.Sprintf("[LUMO WARMUP %s] acknowledged", strings.ToUpper(name)))
 				return nil
 			}
 		} else {
@@ -440,6 +440,31 @@ func appendLumoOutputLog(result string) {
 			continue
 		}
 		_, _ = fmt.Fprintf(f, "[%s] [LUMO OUTPUT] %s\n", ts, line)
+	}
+}
+
+func appendLumoServerLog(message string) {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return
+	}
+	logDir := strings.TrimSpace(os.Getenv("LOG_DIR"))
+	if logDir == "" {
+		logDir = "/lumo_lab/logs"
+	}
+	path := filepath.Join(logDir, "lumo-server.log")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	for _, line := range strings.Split(trimmed, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		_, _ = fmt.Fprintf(f, "[%s] %s\n", ts, line)
 	}
 }
 
