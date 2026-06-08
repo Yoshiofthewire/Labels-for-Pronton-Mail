@@ -726,7 +726,7 @@ func resolveTuningPath() string {
 }
 
 func restartLumoProcess(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "supervisorctl", "restart", "lumo")
+	cmd := exec.CommandContext(ctx, "supervisorctl", "-c", "/etc/supervisord.conf", "restart", "lumo")
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
