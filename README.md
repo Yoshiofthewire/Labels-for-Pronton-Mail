@@ -96,6 +96,7 @@ cp .env.example .env
 2. Edit `.env` values:
 
 - `PROTON_AUTH_FILE` (default: `/lumo_lab/config/proton-auth.json`)
+- `PROTON_APP_VERSION` (optional override; default in app code is `web-mail@5.0.0.0`)
 - `LUMO_API_KEY` if your Lumo route requires it
 - `LUMO_BASE_URL` (defaults to local in-container Lumo)
 
@@ -166,7 +167,7 @@ Then point `LUMO_BASE_URL` to an external Lumo service.
 
 ## Web Configuration
 
-`/api/config` (and the Config page) supports:
+`/api/config` supports:
 
 - `lumo.baseUrl`
 - `lumo.apiKey`
@@ -174,16 +175,14 @@ Then point `LUMO_BASE_URL` to an external Lumo service.
 - `labels.allowlist`
 - timezone/log/scan/rate-limit settings
 
-The Config page also supports:
+The Config page currently focuses on authentication and connectivity checks:
 
-- Uploading the `auth.json` generated locally by Lumo API V2 `generate_auth.js`
-- Reporting whether the persisted Lumo auth file exists and when it was last updated
-- Converting uploaded `auth.json` into Proton token runtime file (`/api/proton/auth`)
-- Loading and editing `TUNING.md`
-- Syncing labels discovered from Proton (`GET /api/labels`)
-- Reordering labels for priority guidance
-- Managing per-label definition notes
-- Generating/resetting tuning templates
+- One shared `auth.json` upload action that posts to both:
+  - `POST /api/lumo/auth`
+  - `POST /api/proton/auth`
+- Lumo connectivity test (`POST /api/lumo/test`)
+
+Tuning is managed in the dedicated Tuning tab and through `/api/tuning`.
 
 ## Tuning and Guardrails
 
@@ -226,9 +225,12 @@ It calls backend endpoint:
 Payload:
 
 ```json
-{ "prompt": "Return only the label Questionable" }
+{
+  "prompt": "Email Address: test@example.com\nSubject Line: Lumo connectivity test\nReturn only the label Questionable"
+}
 ```
 
+Server-side timeout for this endpoint is 120 seconds.
 Response includes connection target and returned text.
 
 ## Authentication and Security
@@ -280,8 +282,9 @@ Supported runtime mode:
 
 1. File mode:
 - `PROTON_AUTH_FILE` (default `/lumo_lab/config/proton-auth.json`)
+- `PROTON_APP_VERSION` (optional, forwarded as `x-pm-appversion`)
 
-Use the Config page `Proton Authentication` section to upload and convert Lumo `auth.json` into this token artifact.
+Use the Config page shared auth upload to convert and persist Proton tokens.
 
 ## Development Commands
 
@@ -307,6 +310,10 @@ npm run dev
 - Console logs enabled
 - Rotating file logs at `/lumo_lab/logs/app.log`
 - Rotation policy: 16 MB, up to 8 rotated files
+- Local Lumo process logs at `/lumo_lab/logs/lumo.log`
+- Lumo adapter failure logs at `/lumo_lab/logs/lumo.err.log`
+- Successful/parsed Lumo output lines are prefixed with `[LUMO OUTPUT]`
+- Lumo classify/request failures are prefixed with `[LUMO ERROR]`
 
 ## Known Limitations
 
@@ -323,6 +330,15 @@ npm run dev
 - Check `/api/logs?lines=200`
 - Confirm `/lumo_lab/config/lumo-auth.json` exists for local Lumo mode
 - Confirm local Lumo process logs in `/lumo_lab/logs/lumo.log`
+- Check `/lumo_lab/logs/lumo.err.log` for `[LUMO ERROR]` entries
+- If UI error is 401, re-login (session expired)
+- If UI error is 502, inspect upstream Lumo error text in `lumo.err.log`
+
+### Proton fetch returns 422 out of date
+
+- Re-upload fresh Proton auth via Config shared auth upload
+- Restart daemon or wait for next poll tick
+- If needed, set `PROTON_APP_VERSION` in `.env` and redeploy
 
 ### Unauthorized API responses
 
