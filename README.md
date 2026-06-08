@@ -1,3 +1,6 @@
+
+<img src="https://github.com/Yoshiofthewire/Lumo-Labels/blob/529ed1ab4b07a8ae382d45f7fb477a11c386c017/lumolabel.png"  />
+
 # Lumo Labels: Proton Mail Auto-Labeler
 
 Lumo Labels is a Dockerized application that scans unread Proton Mail inbox messages, classifies them with Lumo API V2, and applies Proton labels using deterministic rules.
