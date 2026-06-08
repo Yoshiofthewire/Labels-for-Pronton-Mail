@@ -40,7 +40,8 @@ type tokenFile struct {
 }
 
 func NewAPIClientFromEnv() *APIClient {
-	opts := []protonapi.Option{protonapi.WithAppVersion("lumo-lab")}
+	// Proton API validates platform from app version token. Use known valid format.
+	opts := []protonapi.Option{protonapi.WithAppVersion("proton_0.9.0")}
 	if host := strings.TrimSpace(os.Getenv("PROTON_API_HOST")); host != "" {
 		opts = append(opts, protonapi.WithHostURL(host))
 	}
