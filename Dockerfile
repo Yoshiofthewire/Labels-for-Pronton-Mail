@@ -14,7 +14,7 @@ RUN npm run build
 
 FROM node:20-bookworm-slim
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends supervisor tzdata git ca-certificates \
+	&& apt-get install -y --no-install-recommends supervisor tzdata git ca-certificates lsof \
 	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/lumo-lab

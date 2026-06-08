@@ -141,6 +141,98 @@ pre {
   background: rgba(155, 64, 93, 0.38);
 }
 
+.log-line { color: var(--ink); }
+.log-error { color: #ff6b6b; }
+.log-warn  { color: #ffcc66; }
+.log-info  { color: #9f67ff; opacity: 0.9; }
+.log-debug { color: #888; }
+
+.health-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.health-head h2 {
+  margin: 0;
+}
+
+.health-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.health-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.health-controls select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.health-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.health-ok {
+  background: rgba(72, 115, 88, 0.28);
+}
+
+.health-bad {
+  background: rgba(155, 64, 93, 0.34);
+}
+
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.health-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(19, 10, 31, 0.4);
+  padding: 12px;
+}
+
+.health-card h4 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.health-value {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.health-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
 @media (max-width: 900px) {
   .shell {
     grid-template-columns: 1fr;
@@ -149,5 +241,9 @@ pre {
   .sidebar {
     border-right: 0;
     border-bottom: 1px solid var(--line);
+  }
+
+  .health-grid {
+    grid-template-columns: 1fr;
   }
 }

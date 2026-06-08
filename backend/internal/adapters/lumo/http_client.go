@@ -5,8 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -51,19 +55,55 @@ func (c *HTTPClient) Classify(ctx context.Context, allowedLabels []string, sende
 	}
 	parts = append(parts, basePrompt)
 	prompt := strings.Join(parts, "\n\n")
-	payload := map[string]any{
-		"prompt":         prompt,
-		"allowed_labels": allowedLabels,
-		"sender":         sender,
-		"subject":        subject,
-		"body":           body,
-	}
-	b, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
+	payload := []byte(fmt.Sprintf("{\"prompt\":%s, \"webSearch\":false}", strconv.Quote(prompt)))
+
+	for attempt := 0; attempt < 3; attempt++ {
+		result, err := c.classifyOnce(ctx, payload)
+		if err != nil {
+			appendLumoErrorLog(err.Error())
+			return "", err
+		}
+		appendLumoOutputLog(result)
+
+		normalized := strings.TrimSpace(result)
+		if strings.EqualFold(normalized, "Error: Model busy") {
+			_ = restartLumoServer(ctx)
+			return "", fmt.Errorf("lumo model busy; restarted lumo server")
+		}
+		if strings.Contains(result, "You've reached your weekly chat limit") {
+			return "", fmt.Errorf("%s\nuser has run out of ai credits", normalized)
+		}
+		if normalized == "Tools" {
+			if attempt < 2 {
+				time.Sleep(15 * time.Second)
+				continue
+			}
+		}
+
+		// Find the first line that matches an allowed label (case-insensitive)
+		for _, line := range strings.Split(normalized, "\n") {
+			line = strings.TrimSpace(line)
+			for _, label := range allowedLabels {
+				if strings.EqualFold(line, label) {
+					return label, nil
+				}
+			}
+		}
+		// No exact match — return the last non-empty line as best effort
+		lines := strings.Split(normalized, "\n")
+		for i := len(lines) - 1; i >= 0; i-- {
+			if l := strings.TrimSpace(lines[i]); l != "" {
+				return l, nil
+			}
+		}
+		return normalized, nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+c.path, bytes.NewReader(b))
+	return "", fmt.Errorf("lumo classify retry limit reached")
+}
+
+func (c *HTTPClient) classifyOnce(ctx context.Context, payload []byte) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+c.path, bytes.NewReader(payload))
 	if err != nil {
 		return "", err
 	}
@@ -74,25 +114,103 @@ func (c *HTTPClient) Classify(ctx context.Context, allowedLabels []string, sende
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		appendLumoErrorLog(fmt.Sprintf("lumo request failed: %v", err))
 		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		body := strings.TrimSpace(string(bodyBytes))
+		if body != "" {
+			return "", fmt.Errorf("lumo classify failed: status %d body: %s", resp.StatusCode, body)
+		}
 		return "", fmt.Errorf("lumo classify failed: status %d", resp.StatusCode)
 	}
 
-	var parsed map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return "", err
-	}
-	for _, key := range []string{"label", "text", "response", "output"} {
-		if v, ok := parsed[key]; ok {
-			if s, ok := v.(string); ok {
-				return s, nil
+	ct := resp.Header.Get("Content-Type")
+	if strings.Contains(ct, "application/json") {
+		var parsed map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+			return "", err
+		}
+		for _, key := range []string{"label", "text", "response", "output", "message", "error"} {
+			if v, ok := parsed[key]; ok {
+				if s, ok := v.(string); ok {
+					return strings.TrimSpace(s), nil
+				}
 			}
 		}
+		return "", fmt.Errorf("lumo response missing text field")
 	}
-	return "", fmt.Errorf("lumo response missing label text field")
+
+	rawBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	raw := strings.TrimSpace(string(rawBytes))
+	if raw == "" {
+		return "", fmt.Errorf("lumo returned empty response")
+	}
+	return raw, nil
+}
+
+func appendLumoOutputLog(result string) {
+	trimmed := strings.TrimSpace(result)
+	if trimmed == "" {
+		return
+	}
+	logDir := strings.TrimSpace(os.Getenv("LOG_DIR"))
+	if logDir == "" {
+		logDir = "/lumo_lab/logs"
+	}
+	path := filepath.Join(logDir, "lumo.log")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	for _, line := range strings.Split(trimmed, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		_, _ = fmt.Fprintf(f, "[%s] [LUMO OUTPUT] %s\n", ts, line)
+	}
+}
+
+func appendLumoErrorLog(message string) {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return
+	}
+	logDir := strings.TrimSpace(os.Getenv("LOG_DIR"))
+	if logDir == "" {
+		logDir = "/lumo_lab/logs"
+	}
+	path := filepath.Join(logDir, "lumo.err.log")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	for _, line := range strings.Split(trimmed, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		_, _ = fmt.Fprintf(f, "[%s] [LUMO ERROR] %s\n", ts, line)
+	}
+}
+
+func restartLumoServer(ctx context.Context) error {
+	restartCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(restartCtx, "supervisorctl", "-c", "/etc/supervisord.conf", "restart", "lumo")
+	return cmd.Run()
 }
 
 func LoadGuardrailText() string {

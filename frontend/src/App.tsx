@@ -6,14 +6,14 @@ import { DecisionsPage } from "./pages/DecisionsPage";
 import { HealthPage } from "./pages/HealthPage";
 import { LoginPage } from "./pages/LoginPage";
 import { LogsPage } from "./pages/LogsPage";
-import { StatusPage } from "./pages/StatusPage";
 import { LabelsPage } from "./pages/LabelsPage";
+import { TuningPage } from "./pages/TuningPage";
 
 const navItems = [
   ["/login", "Login"],
   ["/config", "Config"],
+  ["/tuning", "Tuning"],
   ["/labels", "Label Map"],
-  ["/status", "Status"],
   ["/decisions", "Decisions"],
   ["/logs", "Logs"],
   ["/health", "Health"]
@@ -72,7 +72,7 @@ export function App() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <h1>Lumo Lab</h1>
+        <h1>Lumo Labels</h1>
         {auth.authenticated ? (
           <div className="session-meta">
             <p>Signed in as {auth.username ?? "admin"}</p>
@@ -91,11 +91,11 @@ export function App() {
       </aside>
       <main className="content">
         <Routes>
-          <Route path="/" element={<Navigate to={auth.authenticated ? "/status" : "/login"} replace />} />
+          <Route path="/" element={<Navigate to={auth.authenticated ? "/health" : "/login"} replace />} />
           <Route path="/login" element={<LoginPage auth={auth} onAuthChanged={refreshAuth} />} />
           <Route path="/config" element={protect(<ConfigPage />)} />
+          <Route path="/tuning" element={protect(<TuningPage />)} />
           <Route path="/labels" element={protect(<LabelsPage />)} />
-          <Route path="/status" element={protect(<StatusPage />)} />
           <Route path="/decisions" element={protect(<DecisionsPage />)} />
           <Route path="/logs" element={protect(<LogsPage />)} />
           <Route path="/health" element={protect(<HealthPage />)} />

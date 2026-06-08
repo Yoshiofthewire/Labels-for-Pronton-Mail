@@ -14,26 +14,33 @@ if [ ! -d "$LUMO_DIR" ]; then
   exec tail -f /dev/null
 fi
 
-if [ -f "$AUTH_FILE" ]; then
-  cp "$AUTH_FILE" "$LUMO_DIR/auth.json"
-fi
-
-if [ ! -f "$LUMO_DIR/auth.json" ]; then
-  echo "Missing Lumo auth file at $AUTH_FILE"
-  echo "Place auth file there or disable local Lumo process."
-  exec tail -f /dev/null
-fi
-
 cd "$LUMO_DIR"
 
+# Wait for auth file to be provided before starting Lumo
+while [ ! -f "$AUTH_FILE" ]; do
+  echo "Waiting for Lumo auth file at $AUTH_FILE ..."
+  sleep 10
+done
+
+cp "$AUTH_FILE" "$LUMO_DIR/auth.json"
+
 kill_stale_lumo() {
-  lsof -ti:3333 2>/dev/null | xargs -r kill -9 2>/dev/null || true
-  sleep 1
+  for attempt in 1 2 3; do
+    pids=$(lsof -ti:3333 2>/dev/null || true)
+    if [ -z "$pids" ]; then
+      break
+    fi
+    echo "Killing stale process on port 3333 (attempt $attempt): $pids"
+    echo "$pids" | xargs -r kill -9 2>/dev/null || true
+    sleep 1
+  done
+  sleep 2
+  lsof -ti:3333 2>/dev/null && echo "WARNING: Port 3333 still in use after cleanup attempts" || true
 }
 
 kill_stale_lumo
 
-if ! node lumo.js; then
+if ! node lumo.js ghost:true; then
   echo "Lumo process exited unexpectedly; keeping container alive for recovery."
   exec tail -f /dev/null
 fi

@@ -68,6 +68,7 @@ func (s *Server) Run() error {
 	mux.HandleFunc("/api/labels", s.withAuth(s.handleLabels))
 	mux.HandleFunc("/api/decisions", s.withAuth(s.handleDecisions))
 	mux.HandleFunc("/api/logs", s.withAuth(s.handleLogs))
+	mux.HandleFunc("/api/logs/list", s.withAuth(s.handleLogsList))
 	mux.HandleFunc("/api/lumo/auth", s.withAuth(s.handleLumoAuth))
 	mux.HandleFunc("/api/proton/auth", s.withAuth(s.handleProtonAuth))
 	mux.HandleFunc("/api/lumo/test", s.withAuth(s.handleLumoTest))
@@ -397,12 +398,44 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 			lines = v
 		}
 	}
-	out, err := tailLines(s.logPath, lines)
+	logDir := envOrDefault("LOG_DIR", "/lumo_lab/logs")
+	// Resolve requested file — default to app.log, allow any *.log in logDir
+	filename := filepath.Base(r.URL.Query().Get("file"))
+	if filename == "" || filename == "." {
+		filename = "app.log"
+	}
+	// Security: only allow .log files, no path traversal
+	if filepath.Ext(filename) != ".log" || strings.Contains(filename, "/") || strings.Contains(filename, "..") {
+		http.Error(w, "invalid log file", http.StatusBadRequest)
+		return
+	}
+	target := filepath.Join(logDir, filename)
+	out, err := tailLines(target, lines)
 	if err != nil {
 		http.Error(w, "failed to read logs", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"lines": out})
+	writeJSON(w, http.StatusOK, map[string]any{"lines": out, "file": filename})
+}
+
+func (s *Server) handleLogsList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	logDir := envOrDefault("LOG_DIR", "/lumo_lab/logs")
+	entries, err := os.ReadDir(logDir)
+	if err != nil {
+		http.Error(w, "failed to list logs", http.StatusInternalServerError)
+		return
+	}
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() && filepath.Ext(e.Name()) == ".log" {
+			files = append(files, e.Name())
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"files": files})
 }
 
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
@@ -589,7 +622,7 @@ func (s *Server) handleLumoTest(w http.ResponseWriter, r *http.Request) {
 
 	prompt := strings.TrimSpace(req.Prompt)
 	if prompt == "" {
-		prompt = "Return only the label Questionable"
+		prompt = "Email Address: test@example.com\nSubject Line: Lumo connectivity test\nReturn only the label Questionable"
 	}
 
 	allowed := cfg.Labels.Allowlist
@@ -599,8 +632,8 @@ func (s *Server) handleLumoTest(w http.ResponseWriter, r *http.Request) {
 
 	guardrail := lumo.LoadGuardrailText()
 	tuning := lumo.LoadTuningText()
-	client := lumo.NewHTTPClient(baseURL, apiKey, path, guardrail, tuning, 20*time.Second)
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	client := lumo.NewHTTPClient(baseURL, apiKey, path, guardrail, tuning, 60*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
 	result, err := client.Classify(ctx, allowed, "test@example.com", "Lumo connectivity test", prompt)

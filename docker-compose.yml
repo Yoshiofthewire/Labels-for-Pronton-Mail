@@ -4,12 +4,13 @@ services:
     container_name: lumo-lab
     ports:
       - "5866:5866"
+      - "3333:3333"
     environment:
       WEB_PORT: 5866
       TZ: ${TZ:-America/New_York}
       PROTON_API_HOST: ${PROTON_API_HOST:-}
       PROTON_AUTH_FILE: ${PROTON_AUTH_FILE:-/lumo_lab/config/proton-auth.json}
-      LUMO_API_KEY: ${LUMO_API_KEY}
+      LUMO_API_KEY: ${LUMO_API_KEY:-}
       LUMO_BASE_URL: ${LUMO_BASE_URL:-http://127.0.0.1:3333}
       LUMO_LOCAL_ENABLED: ${LUMO_LOCAL_ENABLED:-true}
       LUMO_AUTH_FILE: ${LUMO_AUTH_FILE:-/lumo_lab/config/lumo-auth.json}

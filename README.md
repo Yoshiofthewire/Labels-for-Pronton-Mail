@@ -1,6 +1,6 @@
-# Lumo Lab: Proton Mail Auto-Labeler
+# Lumo Labels: Proton Mail Auto-Labeler
 
-Lumo Lab is a Dockerized application that scans unread Proton Mail inbox messages, classifies them with Lumo API V2, and applies Proton labels using deterministic rules.
+Lumo Labels is a Dockerized application that scans unread Proton Mail inbox messages, classifies them with Lumo API V2, and applies Proton labels using deterministic rules.
 
 Classification prompts are composed in this order:
 
