@@ -25,8 +25,8 @@ type Poller struct {
 	lumo      lumo.Client
 	redaction *redaction.Engine
 	cancel    context.CancelFunc
-
 	mu        sync.Mutex
+	tickSem   chan struct{}
 	processed []time.Time
 }
 
@@ -35,7 +35,10 @@ func New(cfg config.Config, log *logging.Logger, store *state.Store, healthSvc *
 	if err != nil {
 		return nil, err
 	}
-	return &Poller{cfg: cfg, log: log, store: store, health: healthSvc, proton: protonClient, lumo: lumoClient, redaction: re, processed: []time.Time{}}, nil
+	p := &Poller{cfg: cfg, log: log, store: store, health: healthSvc, proton: protonClient, lumo: lumoClient, redaction: re, processed: []time.Time{}}
+	p.tickSem = make(chan struct{}, 1)
+	p.tickSem <- struct{}{}
+	return p, nil
 }
 
 func (p *Poller) Run() {
@@ -80,6 +83,16 @@ func (p *Poller) TriggerUnreadSweep() {
 }
 
 func (p *Poller) tick() {
+	// acquire semaphore; if another tick is running, log that we're waiting
+	select {
+	case <-p.tickSem:
+		// acquired immediately
+	default:
+		p.log.Info("poll tick waiting for previous tick to finish")
+		<-p.tickSem
+	}
+	defer func() { p.tickSem <- struct{}{} }()
+
 	if err := p.store.Cleanup(30); err != nil {
 		p.log.Error("state cleanup failed", "error", err.Error())
 		p.health.MarkUnhealthy("state cleanup failed")

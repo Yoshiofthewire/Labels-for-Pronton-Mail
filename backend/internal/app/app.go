@@ -85,6 +85,7 @@ func runDaemon(cfg config.Config, logger *logging.Logger, store *state.Store, he
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	go poller.Run()
+	logger.Info("poller goroutine started")
 	go monitorHealth(logger, healthSvc)
 	<-stop
 	poller.Stop()
@@ -109,6 +110,7 @@ func runAll(cfg config.Config, logger *logging.Logger, store *state.Store, healt
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	go poller.Run()
+	logger.Info("poller goroutine started")
 	go monitorHealth(logger, healthSvc)
 	go func() {
 		if err := srv.Run(); err != nil {

@@ -3,7 +3,6 @@ import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { getJSON, postJSON } from "./api/client";
 import { ConfigPage } from "./pages/ConfigPage";
 import { DecisionsPage } from "./pages/DecisionsPage";
-import { HealthPage } from "./pages/HealthPage";
 import { LoginPage } from "./pages/LoginPage";
 import { LogsPage } from "./pages/LogsPage";
 import { LabelsPage } from "./pages/LabelsPage";
@@ -14,8 +13,7 @@ const navItems = [
   ["/config", "Config"],
   ["/tuning", "Tuning"],
   ["/decisions", "Decisions"],
-  ["/logs", "Logs"],
-  ["/health", "Health"]
+  ["/logs", "Logs"]
 ] as const;
 
 type AuthState = {
@@ -90,14 +88,13 @@ export function App() {
       </aside>
       <main className="content">
         <Routes>
-          <Route path="/" element={<Navigate to={auth.authenticated ? "/health" : "/login"} replace />} />
+          <Route path="/" element={<Navigate to={auth.authenticated ? "/logs" : "/login"} replace />} />
           <Route path="/login" element={<LoginPage auth={auth} onAuthChanged={refreshAuth} />} />
           <Route path="/config" element={protect(<ConfigPage />)} />
           <Route path="/tuning" element={protect(<TuningPage />)} />
           <Route path="/labels" element={protect(<LabelsPage />)} />
           <Route path="/decisions" element={protect(<DecisionsPage />)} />
           <Route path="/logs" element={protect(<LogsPage />)} />
-          <Route path="/health" element={protect(<HealthPage />)} />
         </Routes>
       </main>
     </div>
