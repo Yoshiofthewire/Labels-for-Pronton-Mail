@@ -27,7 +27,8 @@ RUN chmod +x /opt/lumo-lab/scripts/*.sh
 
 RUN git clone --depth 1 https://github.com/carlostkd/Lumo-Api-V2.git /opt/lumo-api-v2 \
 	&& cd /opt/lumo-api-v2 \
-	&& npm install playwright
+	&& npm install playwright \
+	&& npx playwright install firefox
 
 ENV CONFIG_DIR=/lumo_lab/config
 ENV LOG_DIR=/lumo_lab/logs
