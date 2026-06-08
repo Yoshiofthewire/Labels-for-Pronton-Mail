@@ -25,6 +25,14 @@ if [ ! -f "$LUMO_DIR/auth.json" ]; then
 fi
 
 cd "$LUMO_DIR"
+
+kill_stale_lumo() {
+  lsof -ti:3333 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+  sleep 1
+}
+
+kill_stale_lumo
+
 if ! node lumo.js; then
   echo "Lumo process exited unexpectedly; keeping container alive for recovery."
   exec tail -f /dev/null
