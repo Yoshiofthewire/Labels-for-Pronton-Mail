@@ -726,17 +726,34 @@ func resolveTuningPath() string {
 }
 
 func restartLumoProcess(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "supervisorctl", "-c", "/etc/supervisord.conf", "restart", "lumo")
-	cmd.Env = os.Environ()
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		message := strings.TrimSpace(string(out))
-		if message == "" {
-			message = err.Error()
-		}
-		return fmt.Errorf("restart lumo: %s", message)
+	run := func(args ...string) (string, error) {
+		cmd := exec.CommandContext(ctx, "supervisorctl", args...)
+		cmd.Env = os.Environ()
+		out, err := cmd.CombinedOutput()
+		return strings.TrimSpace(string(out)), err
 	}
-	return nil
+
+	out, err := run("-c", "/etc/supervisord.conf", "restart", "lumo")
+	if err == nil {
+		return nil
+	}
+
+	msg := out
+	if msg == "" {
+		msg = err.Error()
+	}
+	lower := strings.ToLower(msg)
+	if strings.Contains(lower, "not running") || strings.Contains(lower, "spawn error") || strings.Contains(lower, "fatal") {
+		startOut, startErr := run("-c", "/etc/supervisord.conf", "start", "lumo")
+		if startErr == nil {
+			return nil
+		}
+		if strings.TrimSpace(startOut) != "" {
+			msg = msg + "; start attempt: " + strings.TrimSpace(startOut)
+		}
+	}
+
+	return fmt.Errorf("restart lumo: %s", msg)
 }
 
 type storageStateCookie struct {

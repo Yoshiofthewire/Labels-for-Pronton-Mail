@@ -25,4 +25,7 @@ if [ ! -f "$LUMO_DIR/auth.json" ]; then
 fi
 
 cd "$LUMO_DIR"
-exec node lumo.js
+if ! node lumo.js; then
+  echo "Lumo process exited unexpectedly; keeping container alive for recovery."
+  exec tail -f /dev/null
+fi
