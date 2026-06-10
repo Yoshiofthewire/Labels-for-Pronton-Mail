@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS backend-builder
+FROM golang:1.26.4 AS backend-builder
 WORKDIR /app
 COPY backend/go.mod backend/go.sum* ./backend/
 RUN cd backend && go mod download
@@ -12,7 +12,7 @@ RUN npm install
 COPY frontend .
 RUN npm run build
 
-FROM node:20-bookworm-slim
+FROM node:24.16.0-slim
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends supervisor tzdata git ca-certificates lsof \
 	&& rm -rf /var/lib/apt/lists/*
