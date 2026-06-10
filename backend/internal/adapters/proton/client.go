@@ -319,19 +319,34 @@ func (c *APIClient) ensureClient(ctx context.Context) (*protonapi.Client, error)
 		return nil, err
 	}
 	if uid != "" && acc != "" && ref != "" {
-		c.client = c.mgr.NewClient(uid, acc, ref)
+		pc := c.mgr.NewClient(uid, acc, ref)
+		// Persist refreshed tokens to disk so a restart always has valid credentials.
+		pc.AddAuthHandler(func(auth protonapi.Auth) {
+			_ = writeTokenFile(auth.UID, auth.AccessToken, auth.RefreshToken)
+		})
+		// Clear the cached client on de-auth (422) so ensureClient re-reads the
+		// token file on the next poll rather than permanently returning a dead client.
+		pc.AddDeauthHandler(func() {
+			c.mu.Lock()
+			c.client = nil
+			c.mu.Unlock()
+		})
+		c.client = pc
 		return c.client, nil
 	}
 
 	return nil, errors.New("missing proton token credentials in token file")
 }
 
-func readTokenFile() (string, string, string, error) {
-	path := strings.TrimSpace(os.Getenv("PROTON_AUTH_FILE"))
-	if path == "" {
-		path = "/lumo_lab/config/proton-auth.json"
+func tokenFilePath() string {
+	if path := strings.TrimSpace(os.Getenv("PROTON_AUTH_FILE")); path != "" {
+		return path
 	}
-	b, err := os.ReadFile(path)
+	return "/lumo_lab/config/proton-auth.json"
+}
+
+func readTokenFile() (string, string, string, error) {
+	b, err := os.ReadFile(tokenFilePath())
 	if err != nil {
 		return "", "", "", errors.New("failed to read proton auth file")
 	}
@@ -346,6 +361,14 @@ func readTokenFile() (string, string, string, error) {
 		return "", "", "", errors.New("proton auth file missing uid/accessToken/refreshToken")
 	}
 	return uid, acc, ref, nil
+}
+
+func writeTokenFile(uid, acc, ref string) error {
+	b, err := json.Marshal(tokenFile{UID: uid, AccessToken: acc, RefreshToken: ref})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(tokenFilePath(), b, 0600)
 }
 
 func (c *APIClient) ensureLabelID(ctx context.Context, name string) (string, error) {
