@@ -93,18 +93,22 @@ func (c *HTTPClient) Classify(ctx context.Context, allowedLabels []string, sende
 			return "", fmt.Errorf("%s\nuser has run out of ai credits", normalized)
 		}
 		if isToolsOnlyResponse(normalized) {
+			appendLumoServerLog(fmt.Sprintf("[CLASSIFY RETRY] tools-only response on attempt %d/%d, waiting before retry", attempt+1, 3))
 			if attempt < 2 {
 				time.Sleep(15 * time.Second)
 				continue
 			}
-			return "", nil
+			appendLumoServerLog("[CLASSIFY FAILED] tools-only response exhausted all inner retries")
+			return "", fmt.Errorf("lumo returned tools-only response after %d attempts", attempt+1)
 		}
 		if hasEmptyMessageNoise(normalized) {
+			appendLumoServerLog(fmt.Sprintf("[CLASSIFY RETRY] empty-message noise on attempt %d/%d, waiting before retry", attempt+1, 3))
 			if attempt < 2 {
 				time.Sleep(5 * time.Second)
 				continue
 			}
-			return "", nil
+			appendLumoServerLog("[CLASSIFY FAILED] empty-message noise exhausted all inner retries")
+			return "", fmt.Errorf("lumo returned empty-message noise after %d attempts", attempt+1)
 		}
 
 		searchText := stripTransientNoise(labelSearchScope(normalized))

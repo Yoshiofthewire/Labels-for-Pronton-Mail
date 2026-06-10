@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -262,8 +263,12 @@ func classifyWithRetry(ctx context.Context, c lumo.Client, labels []string, send
 	var err error
 	for i := 0; i < 3; i++ {
 		out, err = c.Classify(ctx, labels, sender, subject, body)
-		if err == nil {
+		if err == nil && out != "" {
 			return out, nil
+		}
+		if err == nil {
+			// Classify returned no error but an empty label — treat as retryable.
+			err = fmt.Errorf("lumo returned empty label")
 		}
 		if i < 2 {
 			time.Sleep(5 * time.Second)
