@@ -8,9 +8,19 @@ const REFRESH_OPTIONS = [
   { label: "10s", value: 10 },
   { label: "30s", value: 30 },
 ];
-const HIDDEN_LOG_PREFIXES = ["bootstrap", "lumo.", "proton"];
+const HIDDEN_LOG_PREFIXES = ["bootstrap", "proton"];
+
+// Files that should always appear first, in this order.
+const PINNED_LOG_ORDER = ["app.log", "lumo.log", "lumo-error.log"];
+
+function sortLogFiles(files: string[]): string[] {
+  const pinned = PINNED_LOG_ORDER.filter((f) => files.includes(f));
+  const rest = files.filter((f) => !PINNED_LOG_ORDER.includes(f)).sort();
+  return [...pinned, ...rest];
+}
 
 function tabLabel(filename: string): string {
+  if (filename === "lumo.log") return "Lumo Server";
   return filename.replace(/\.log$/, "").replace(/[._-]/g, " ");
 }
 
@@ -115,8 +125,10 @@ export function LogsPage() {
   useEffect(() => {
     getJSON<{ files: string[] }>("/api/logs/list")
       .then((d) => {
-        const list = (d.files ?? []).filter(
-          (name) => !HIDDEN_LOG_PREFIXES.some((prefix) => name.startsWith(prefix))
+        const list = sortLogFiles(
+          (d.files ?? []).filter(
+            (name) => !HIDDEN_LOG_PREFIXES.some((prefix) => name.startsWith(prefix))
+          )
         );
         setFiles(list);
         if (list.length > 0 && !list.includes(active)) setActive(list[0]);
