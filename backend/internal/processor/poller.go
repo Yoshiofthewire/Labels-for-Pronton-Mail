@@ -45,9 +45,9 @@ func New(cfg config.Config, log *logging.Logger, store *state.Store, healthSvc *
 func (p *Poller) Run() {
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancel = cancel
-	interval := time.Duration(p.cfg.Scan.IntervalMinutes) * time.Minute
+	interval := time.Duration(p.cfg.Scan.IntervalSeconds) * time.Second
 	if interval <= 0 {
-		interval = 5 * time.Minute
+		interval = 90 * time.Second
 	}
 
 	p.log.Info("poller started", "interval", interval.String())
@@ -170,10 +170,16 @@ func isProtonAuthUnhealthyError(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	if strings.Contains(msg, "401") {
+		return true
+	}
 	if strings.Contains(msg, "422") {
 		return true
 	}
 	if strings.Contains(msg, "out of date") || strings.Contains(msg, "refresh the page") {
+		return true
+	}
+	if strings.Contains(msg, "re-authentication required") {
 		return true
 	}
 	return false

@@ -95,7 +95,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	cfg := s.cfg
 	s.mu.RUnlock()
 	resp := map[string]any{
-		"scanIntervalMinutes": cfg.Scan.IntervalMinutes,
+		"scanIntervalSeconds": cfg.Scan.IntervalSeconds,
 		"rateLimits":          cfg.RateLimits,
 		"checkpoint":          s.store.Checkpoint(),
 		"serverTimeUtc":       time.Now().UTC().Format(time.RFC3339),

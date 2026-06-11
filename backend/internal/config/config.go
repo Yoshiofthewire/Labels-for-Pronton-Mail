@@ -25,7 +25,7 @@ type Config struct {
 	} `yaml:"lumo"`
 
 	Scan struct {
-		IntervalMinutes int `yaml:"intervalMinutes"`
+		IntervalSeconds int `yaml:"intervalSeconds"`
 	} `yaml:"scan"`
 
 	RateLimits struct {
@@ -56,7 +56,7 @@ func Default() Config {
 	cfg.Lumo.BaseURL = "http://127.0.0.1:3333"
 	cfg.Lumo.APIKey = ""
 	cfg.Lumo.ClassifyPath = "/"
-	cfg.Scan.IntervalMinutes = 5
+	cfg.Scan.IntervalSeconds = 90
 	cfg.RateLimits.PerMinute = 10
 	cfg.RateLimits.PerHour = 20
 	cfg.Redaction.Patterns = []Pattern{

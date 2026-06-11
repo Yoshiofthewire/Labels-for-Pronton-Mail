@@ -96,14 +96,19 @@ func (c *APIClient) ListUnreadInbox(ctx context.Context, sinceCheckpoint string)
 	// fall back to using stored credentials directly on failure rather than
 	// blocking the entire fetch.
 	if err := c.refreshClient(ctx); err != nil {
+		// A 401/422 from the refresh endpoint means the stored refresh token is
+		// permanently invalid. Surface this immediately so the caller can mark
+		// auth as unhealthy and prompt the user to re-authenticate.
+		if isRefreshAuthError(err) {
+			return nil, "", fmt.Errorf("proton auth credentials invalid or expired (re-authentication required): %w", err)
+		}
+		// Transient refresh failure (network error, app-version mismatch, etc.).
+		// Always rebuild from stored disk credentials rather than reusing the
+		// in-memory client – its access token may be near or past expiry, which
+		// is likely what triggered the refresh failure in the first place.
 		c.mu.Lock()
-		if c.client == nil {
-			// refreshClient cleared the client; rebuild it without a network call.
-			uid, acc, ref, tokenErr := readTokenFile()
-			if tokenErr != nil {
-				c.mu.Unlock()
-				return nil, "", fmt.Errorf("fetch unread inbox failed: %w", tokenErr)
-			}
+		uid, acc, ref, tokenErr := readTokenFile()
+		if tokenErr == nil {
 			pc := c.mgr.NewClient(uid, acc, ref)
 			pc.AddAuthHandler(func(a protonapi.Auth) {
 				_ = writeTokenFile(a.UID, a.AccessToken, a.RefreshToken)
@@ -114,6 +119,9 @@ func (c *APIClient) ListUnreadInbox(ctx context.Context, sinceCheckpoint string)
 				c.mu.Unlock()
 			})
 			c.client = pc
+		} else if c.client == nil {
+			c.mu.Unlock()
+			return nil, "", fmt.Errorf("fetch unread inbox failed: %w", tokenErr)
 		}
 		c.mu.Unlock()
 	}
@@ -290,6 +298,27 @@ func isOutOfDateError(err error) bool {
 		return true
 	}
 	if strings.Contains(msg, "refresh the page") && strings.Contains(msg, "out of date") {
+		return true
+	}
+	return false
+}
+
+// isRefreshAuthError returns true when the error from NewClientWithRefresh
+// signals that the stored credentials are permanently invalid (invalid or
+// expired refresh/access token). These errors cannot be recovered by retrying
+// and require the user to re-authenticate.
+func isRefreshAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	if strings.Contains(msg, "401") {
+		return true
+	}
+	// 422 "Invalid input" from the auth/refresh endpoint means the refresh
+	// token itself is rejected. Exclude app-version 422s which are handled
+	// separately via rotateVersionOnOutOfDate.
+	if strings.Contains(msg, "422") && !strings.Contains(msg, "out of date") && !strings.Contains(msg, "refresh the page") {
 		return true
 	}
 	return false

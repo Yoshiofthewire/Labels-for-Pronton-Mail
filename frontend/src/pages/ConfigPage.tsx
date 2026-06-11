@@ -4,7 +4,7 @@ import { getJSON, postFormData, postJSON, putJSON } from "../api/client";
 type AppConfig = {
   timezone: string;
   logLevel: string;
-  scan: { intervalMinutes: number };
+  scan: { intervalSeconds: number };
   rateLimits: { perMinute: number; perHour: number };
   labels: { allowlist: string[] };
   lumo: { baseUrl: string; apiKey: string; classifyPath: string };

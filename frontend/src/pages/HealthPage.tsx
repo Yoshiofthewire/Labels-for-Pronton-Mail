@@ -9,7 +9,7 @@ type Health = {
 };
 
 type RunStatus = {
-  scanIntervalMinutes: number;
+  scanIntervalSeconds: number;
   checkpoint: string;
 };
 
@@ -111,7 +111,7 @@ export function HealthPage() {
             </article>
             <article className="health-card">
               <h4>Scan Interval</h4>
-              <p className="health-value">{runStatus?.scanIntervalMinutes ?? "-"}m</p>
+              <p className="health-value">{runStatus?.scanIntervalSeconds != null ? `${runStatus.scanIntervalSeconds}s` : "-"}</p>
             </article>
             <article className="health-card">
               <h4>Checkpoint</h4>

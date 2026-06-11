@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getJSON } from "../api/client";
 
 type Status = {
-  scanIntervalMinutes: number;
+  scanIntervalSeconds: number;
   checkpoint: string;
 };
 
