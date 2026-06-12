@@ -18,6 +18,8 @@ RUN apt-get update \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& useradd -m -s /bin/bash lumolab
 
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+
 WORKDIR /opt/lumo-lab
 COPY --from=backend-builder /app/bin/lumo-lab /usr/local/bin/lumo-lab
 COPY --from=frontend-builder /frontend/dist /opt/lumo-lab/frontend
@@ -43,6 +45,7 @@ ENV LUMO_LOCAL_DIR=/opt/lumo-api-v2
 ENV LUMO_AUTH_FILE=/lumo_lab/config/lumo-auth.json
 
 RUN mkdir -p /lumo_lab/config /lumo_lab/logs /lumo_lab/state \
+	&& mkdir -p /opt/ms-playwright \
 	&& chown -R lumolab:lumolab /lumo_lab /opt/lumo-lab /opt/lumo-api-v2
 
 VOLUME ["/lumo_lab/config", "/lumo_lab/logs", "/lumo_lab/state"]
