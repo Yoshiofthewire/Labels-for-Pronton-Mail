@@ -29,13 +29,14 @@ type Client interface {
 }
 
 type APIClient struct {
-	mu         sync.Mutex
-	mgr        *protonapi.Manager
-	client     *protonapi.Client
-	labelByKey map[string]string
-	host       string
-	versions   []string
-	versionIdx int
+	mu          sync.Mutex
+	mgr         *protonapi.Manager
+	client      *protonapi.Client
+	labelByKey  map[string]string
+	host        string
+	versions    []string
+	versionIdx  int
+	skipRefresh bool
 }
 
 type tokenFile struct {
@@ -95,30 +96,35 @@ func (c *APIClient) ListUnreadInbox(ctx context.Context, sinceCheckpoint string)
 	// be refreshable via the API client (different ClientID / App-Version), so
 	// fall back to using stored credentials directly on failure rather than
 	// blocking the entire fetch.
-	if err := c.refreshClient(ctx); err != nil {
-		// Always rebuild from stored disk credentials rather than reusing the
-		// in-memory client – its access token may be near or past expiry, which
-		// is likely what triggered the refresh failure in the first place.
-		// Note: browser-extracted tokens legitimately return 422 from the refresh
-		// endpoint (different ClientID), so we never treat refresh errors as fatal.
-		c.mu.Lock()
-		uid, acc, ref, tokenErr := readTokenFile()
-		if tokenErr == nil {
-			pc := c.mgr.NewClient(uid, acc, ref)
-			pc.AddAuthHandler(func(a protonapi.Auth) {
-				_ = writeTokenFile(a.UID, a.AccessToken, a.RefreshToken)
-			})
-			pc.AddDeauthHandler(func() {
-				c.mu.Lock()
-				c.client = nil
+	if !c.shouldSkipRefresh() {
+		if err := c.refreshClient(ctx); err != nil {
+			if isExpectedRefreshInvalidInputError(err) {
+				c.disableProactiveRefresh()
+			}
+			// Always rebuild from stored disk credentials rather than reusing the
+			// in-memory client – its access token may be near or past expiry, which
+			// is likely what triggered the refresh failure in the first place.
+			// Note: browser-extracted tokens legitimately return 422 from the refresh
+			// endpoint (different ClientID), so we never treat refresh errors as fatal.
+			c.mu.Lock()
+			uid, acc, ref, tokenErr := readTokenFile()
+			if tokenErr == nil {
+				pc := c.mgr.NewClient(uid, acc, ref)
+				pc.AddAuthHandler(func(a protonapi.Auth) {
+					_ = writeTokenFile(a.UID, a.AccessToken, a.RefreshToken)
+				})
+				pc.AddDeauthHandler(func() {
+					c.mu.Lock()
+					c.client = nil
+					c.mu.Unlock()
+				})
+				c.client = pc
+			} else if c.client == nil {
 				c.mu.Unlock()
-			})
-			c.client = pc
-		} else if c.client == nil {
+				return nil, "", fmt.Errorf("fetch unread inbox failed: %w", tokenErr)
+			}
 			c.mu.Unlock()
-			return nil, "", fmt.Errorf("fetch unread inbox failed: %w", tokenErr)
 		}
-		c.mu.Unlock()
 	}
 
 	maxAttempts := len(c.versions)
@@ -296,6 +302,38 @@ func isOutOfDateError(err error) bool {
 		return true
 	}
 	return false
+}
+
+func isExpectedRefreshInvalidInputError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	if !strings.Contains(msg, "422") {
+		return false
+	}
+	if !strings.Contains(msg, "invalid input") {
+		return false
+	}
+	if strings.Contains(msg, "refresh") {
+		return true
+	}
+	if strings.Contains(msg, "grant_type") {
+		return true
+	}
+	return false
+}
+
+func (c *APIClient) shouldSkipRefresh() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.skipRefresh
+}
+
+func (c *APIClient) disableProactiveRefresh() {
+	c.mu.Lock()
+	c.skipRefresh = true
+	c.mu.Unlock()
 }
 
 func (c *APIClient) currentVersion() string {

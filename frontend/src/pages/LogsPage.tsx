@@ -9,6 +9,7 @@ const REFRESH_OPTIONS = [
   { label: "30s", value: 30 },
 ];
 const HIDDEN_LOG_PREFIXES = ["bootstrap", "proton"];
+const HIDDEN_LOG_FILES = ["lumo.log"];
 
 // Files that should always appear first, in this order.
 const PINNED_LOG_ORDER = ["app.log", "lumo.log", "lumo-error.log"];
@@ -128,6 +129,7 @@ export function LogsPage() {
         const list = sortLogFiles(
           (d.files ?? []).filter(
             (name) => !HIDDEN_LOG_PREFIXES.some((prefix) => name.startsWith(prefix))
+              && !HIDDEN_LOG_FILES.includes(name)
           )
         );
         setFiles(list);
