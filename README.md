@@ -75,6 +75,12 @@ You will be prompted to change the password after the first login.
 
 6. On the Config tab upload the generated auth.json files.
 
+7. Go to the Tuning Tab.  If you not created labels in Proton Mail, click the Add Default Labels button to have Lumo Labs setup the default labels in your Proton Mail account.
+
+8. Press Sync Labels from Proton Mail to create prompts for your labels.
+
+9. Once the labels have tuning logic, press Build Tuning.md from labels, then save Tuning.md
+
 ## Running
 
 To start the app after the image is built:
